@@ -114,7 +114,11 @@ if (multer) {
             }
         }),
         limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
-        fileFilter: (_req, file, cb) => cb(null, file.mimetype.startsWith('image/'))
+        fileFilter: (_req, file, cb) => {
+            const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico']);
+            const ext = path.extname(file.originalname || '').toLowerCase();
+            cb(null, file.mimetype.startsWith('image/') && ALLOWED_EXT.has(ext));
+        }
     });
 }
 
