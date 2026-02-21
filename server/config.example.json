@@ -1,0 +1,10 @@
+{
+  "port": 3460,
+  "contentDir": "./data/content",
+  "treeConfigPath": "./data/tree-config.json",
+  "uploadsDir": "./data/uploads",
+  "git": {
+    "enabled": false,
+    "repoDir": ""
+  }
+}
