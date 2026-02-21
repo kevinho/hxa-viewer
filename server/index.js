@@ -80,7 +80,7 @@ console.log(`    VIEWER_DIR   = ${VIEWER_DIR}`);
 // ---------------------------------------------------------------------------
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 // CORS headers for development
 app.use((req, res, next) => {
@@ -116,6 +116,18 @@ if (multer) {
         limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
         fileFilter: (_req, file, cb) => cb(null, file.mimetype.startsWith('image/'))
     });
+}
+
+// ---------------------------------------------------------------------------
+// Helper: safe path resolution (prevents path traversal)
+// ---------------------------------------------------------------------------
+
+function safePath(baseDir, userPath) {
+    const resolved = path.resolve(baseDir, userPath);
+    if (!resolved.startsWith(path.resolve(baseDir) + path.sep) && resolved !== path.resolve(baseDir)) {
+        return null;
+    }
+    return resolved;
 }
 
 // ---------------------------------------------------------------------------
@@ -243,9 +255,8 @@ app.get('/doc-mtime', (req, res) => {
     const { doc } = req.query;
     if (!doc) return res.status(400).json({ error: 'Missing doc parameter' });
 
-    // Basic path traversal prevention
-    const safeName = doc.replace(/\.\./g, '').replace(/[^a-zA-Z0-9\u4e00-\u9fff\-_./]/g, '');
-    const filePath = path.join(CONTENT_DIR, safeName);
+    const filePath = safePath(CONTENT_DIR, doc);
+    if (!filePath) return res.status(400).json({ error: 'Invalid path' });
 
     try {
         const stat = fs.statSync(filePath);
@@ -273,8 +284,8 @@ app.get('/versions', (req, res) => {
     }
 
     try {
-        // Resolve the document path within the content directory
-        const absDocPath = path.join(CONTENT_DIR, doc);
+        const absDocPath = safePath(CONTENT_DIR, doc);
+        if (!absDocPath) return res.status(400).json({ error: 'Invalid path' });
         let realPath;
         try {
             // Follow symlinks if present
@@ -335,13 +346,15 @@ app.get('/versions', (req, res) => {
 app.get('/version-content', (req, res) => {
     const { doc, hash } = req.query;
     if (!doc || !hash) return res.status(400).json({ error: 'Missing doc or hash parameter' });
+    if (!/^[a-f0-9]{4,40}$/i.test(hash)) return res.status(400).json({ error: 'Invalid hash format' });
 
     if (!GIT_ENABLED || !GIT_REPO_DIR) {
         return res.status(404).json({ error: 'Git version history is not enabled' });
     }
 
     try {
-        const absDocPath = path.join(CONTENT_DIR, doc);
+        const absDocPath = safePath(CONTENT_DIR, doc);
+        if (!absDocPath) return res.status(400).json({ error: 'Invalid path' });
         let realPath;
         try {
             realPath = fs.realpathSync(absDocPath);
@@ -679,11 +692,8 @@ app.get('/tree-config.json', (_req, res) => {
 // Serve raw markdown files at /raw/*
 app.get('/raw/*', (req, res) => {
     const relativePath = req.params[0];
-    // Prevent path traversal
-    if (relativePath.includes('..')) {
-        return res.status(400).json({ error: 'Invalid path' });
-    }
-    const filePath = path.join(CONTENT_DIR, relativePath);
+    const filePath = safePath(CONTENT_DIR, relativePath);
+    if (!filePath) return res.status(400).json({ error: 'Invalid path' });
     if (!fs.existsSync(filePath)) {
         return res.status(404).json({ error: 'File not found' });
     }
