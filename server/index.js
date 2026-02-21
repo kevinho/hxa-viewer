@@ -13,7 +13,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { spawnSync } = require('child_process');
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -297,10 +297,10 @@ app.get('/versions', (req, res) => {
         // Make path relative to the git repo
         const relPath = path.relative(GIT_REPO_DIR, realPath);
 
-        const gitLog = execSync(
-            `cd "${GIT_REPO_DIR}" && git log --follow --format="%H|%aI" -- "${relPath}" 2>/dev/null`,
-            { encoding: 'utf8', timeout: 5000 }
-        ).trim();
+        const logResult = spawnSync('git', ['log', '--follow', '--format=%H|%aI', '--', relPath], {
+            cwd: GIT_REPO_DIR, encoding: 'utf8', timeout: 5000
+        });
+        const gitLog = (logResult.stdout || '').trim();
 
         if (!gitLog) return res.json([]);
 
@@ -311,10 +311,10 @@ app.get('/versions', (req, res) => {
         for (const line of commits) {
             const [hash, date] = line.split('|');
             try {
-                const content = execSync(
-                    `cd "${GIT_REPO_DIR}" && git show "${hash}:${relPath}" 2>/dev/null`,
-                    { encoding: 'utf8', timeout: 3000 }
-                );
+                const showResult = spawnSync('git', ['show', `${hash}:${relPath}`], {
+                    cwd: GIT_REPO_DIR, encoding: 'utf8', timeout: 3000
+                });
+                const content = showResult.stdout || '';
                 const vMatch = content.match(/版本[：:]\s*v?([\d.]+)/i);
                 if (vMatch && !seenVersions.has(vMatch[1])) {
                     seenVersions.add(vMatch[1]);
@@ -364,12 +364,12 @@ app.get('/version-content', (req, res) => {
 
         const relPath = path.relative(GIT_REPO_DIR, realPath);
 
-        const content = execSync(
-            `cd "${GIT_REPO_DIR}" && git show "${hash}:${relPath}" 2>/dev/null`,
-            { encoding: 'utf8', timeout: 5000 }
-        );
+        const result = spawnSync('git', ['show', `${hash}:${relPath}`], {
+            cwd: GIT_REPO_DIR, encoding: 'utf8', timeout: 5000
+        });
+        if (result.status !== 0) return res.status(404).json({ error: 'Version not found' });
 
-        res.type('text/plain').send(content);
+        res.type('text/plain').send(result.stdout);
     } catch {
         res.status(404).json({ error: 'Version not found' });
     }
@@ -484,8 +484,8 @@ app.post('/trash-file', (req, res) => {
 
         // Try to extract title from the physical file
         let title = docPath;
-        const physPath = path.join(CONTENT_DIR, docPath);
-        if (fs.existsSync(physPath)) {
+        const physPath = safePath(CONTENT_DIR, docPath);
+        if (physPath && fs.existsSync(physPath)) {
             const content = fs.readFileSync(physPath, 'utf8');
             const m = content.match(/^#\s+(.+)/m);
             if (m) title = m[1];
@@ -575,8 +575,8 @@ app.delete('/permanent-delete', (req, res) => {
         tc.trash.splice(idx, 1);
 
         // Delete the physical file
-        const physPath = path.join(CONTENT_DIR, docPath);
-        if (fs.existsSync(physPath)) {
+        const physPath = safePath(CONTENT_DIR, docPath);
+        if (physPath && fs.existsSync(physPath)) {
             fs.unlinkSync(physPath);
         }
 
