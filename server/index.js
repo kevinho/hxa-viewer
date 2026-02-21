@@ -461,6 +461,7 @@ app.post('/create-file', (req, res) => {
 app.post('/trash-file', (req, res) => {
     const { filePath: docPath, user } = req.body;
     if (!docPath) return res.status(400).json({ error: 'Missing filePath' });
+    if (!safePath(CONTENT_DIR, docPath)) return res.status(400).json({ error: 'Invalid path' });
 
     try {
         const tc = readTreeConfig();
@@ -515,6 +516,7 @@ app.post('/trash-file', (req, res) => {
 app.post('/restore-file', (req, res) => {
     const { filePath: docPath, targetFolder } = req.body;
     if (!docPath) return res.status(400).json({ error: 'Missing filePath' });
+    if (!safePath(CONTENT_DIR, docPath)) return res.status(400).json({ error: 'Invalid path' });
 
     try {
         const tc = readTreeConfig();
@@ -564,6 +566,7 @@ app.post('/restore-file', (req, res) => {
 app.delete('/permanent-delete', (req, res) => {
     const { filePath: docPath } = req.body;
     if (!docPath) return res.status(400).json({ error: 'Missing filePath' });
+    if (!safePath(CONTENT_DIR, docPath)) return res.status(400).json({ error: 'Invalid path' });
 
     try {
         const tc = readTreeConfig();
